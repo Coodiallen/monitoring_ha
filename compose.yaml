@@ -1,0 +1,198 @@
+services:
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+      - ./certs/grafana.crt:/etc/nginx/certs/grafana.crt:ro
+      - ./certs/grafana.key:/etc/nginx/certs/grafana.key:ro
+
+    depends_on:
+      - grafana-1
+      - grafana-2
+
+    networks:
+      - monitoring
+
+  grafana-1:
+    build:
+      context: ./grafana
+    image: monitoring-grafana:13.2.1
+    restart: unless-stopped
+
+    environment:
+      GF_DATABASE_TYPE: postgres
+      GF_DATABASE_HOST: postgres:5432
+      GF_DATABASE_NAME: grafana
+      GF_DATABASE_USER: grafana
+      GF_DATABASE_PASSWORD: ${GRAFANA_DB_PASSWORD}
+
+      GF_SECURITY_SECRET_KEY: ${GRAFANA_SECRET_KEY}
+
+      GF_SERVER_DOMAIN: grafana.local
+      GF_SERVER_ROOT_URL: https://grafana.local/
+
+      GF_AUTH_GITLAB_CLIENT_ID: ${GITLAB_CLIENT_ID}
+      GF_AUTH_GITLAB_CLIENT_SECRET: ${GITLAB_CLIENT_SECRET}
+
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        export PROMETHEUS_BASIC_AUTH_PASSWORD="$$(cat /run/secrets/prometheus_basic_auth_password)"
+        export PROMETHEUS_CA_CERT="$$(cat /etc/grafana/certs/ca.crt)"
+        export INFLUXDB_TOKEN="$$(cat /run/secrets/influxdb_admin_token)"
+        exec /run.sh
+
+    volumes:
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./certs/ca.crt:/etc/grafana/certs/ca.crt:ro
+
+    secrets:
+      - prometheus_basic_auth_password
+      - influxdb_admin_token
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - monitoring
+
+  grafana-2:
+    build:
+      context: ./grafana
+    image: monitoring-grafana:13.2.1
+    restart: unless-stopped
+
+    environment:
+      GF_DATABASE_TYPE: postgres
+      GF_DATABASE_HOST: postgres:5432
+      GF_DATABASE_NAME: grafana
+      GF_DATABASE_USER: grafana
+      GF_DATABASE_PASSWORD: ${GRAFANA_DB_PASSWORD}
+
+      GF_SECURITY_SECRET_KEY: ${GRAFANA_SECRET_KEY}
+
+      GF_SERVER_DOMAIN: grafana.local
+      GF_SERVER_ROOT_URL: https://grafana.local/
+
+      GF_AUTH_GITLAB_CLIENT_ID: ${GITLAB_CLIENT_ID}
+      GF_AUTH_GITLAB_CLIENT_SECRET: ${GITLAB_CLIENT_SECRET}
+
+    volumes:
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - monitoring
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    restart: unless-stopped
+
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.config.file=/etc/prometheus/web.yml
+      - --storage.tsdb.path=/prometheus
+
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/web.yml:/etc/prometheus/web.yml:ro
+      - ./prometheus/data:/prometheus
+      - ./certs/prometheus.crt:/etc/prometheus/certs/prometheus.crt:ro
+      - ./certs/prometheus.key:/etc/prometheus/certs/prometheus.key:ro
+      - ./certs/ca.crt:/etc/prometheus/certs/ca.crt:ro
+
+    secrets:
+      - prometheus_basic_auth_password
+
+    ports:
+      - "127.0.0.1:9090:9090"
+
+    networks:
+      - monitoring
+  influxdb:
+    image: influxdb:2.7
+    restart: unless-stopped
+
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD_FILE: /run/secrets/influxdb_admin_password
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN_FILE: /run/secrets/influxdb_admin_token
+      DOCKER_INFLUXDB_INIT_ORG: monitoring
+      DOCKER_INFLUXDB_INIT_BUCKET: metrics
+
+    volumes:
+      - ./influxdb/data:/var/lib/influxdb2
+      - ./influxdb/config:/etc/influxdb2
+
+    secrets:
+      - influxdb_admin_password
+      - influxdb_admin_token
+
+    ports:
+      - "127.0.0.1:8086:8086"
+
+    networks:
+      - monitoring
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+
+    command:
+      - --web.listen-address=:9100
+
+    networks:
+      - monitoring
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: grafana
+      POSTGRES_USER: grafana
+      POSTGRES_PASSWORD: ${GRAFANA_DB_PASSWORD}
+
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U grafana -d grafana
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    networks:
+      - monitoring
+
+
+networks:
+  monitoring:
+    driver: bridge
+
+secrets:
+  prometheus_basic_auth_password:
+    file: ./secrets/prometheus-basic-auth-password
+
+  influxdb_admin_password:
+    file: ./secrets/influxdb-admin-password
+
+  influxdb_admin_token:
+    file: ./secrets/influxdb-admin-token

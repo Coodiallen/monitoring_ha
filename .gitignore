@@ -1,0 +1,108 @@
+# =========================
+# Environment / local config
+# =========================
+.env
+*.env
+!.env.example
+
+
+# =========================
+# Runtime secrets
+# =========================
+secrets/*
+!secrets/.gitkeep
+
+prometheus/web.yml
+
+
+# =========================
+# TLS / generated certificates
+# =========================
+certs/*
+!certs/.gitkeep
+
+
+# =========================
+# Grafana runtime data
+# =========================
+grafana/grafana-data/
+
+
+# =========================
+# Prometheus runtime data
+# =========================
+prometheus/data/
+
+
+# =========================
+# InfluxDB runtime data
+# =========================
+influxdb/data/
+influxdb/config/
+
+
+# =========================
+# PostgreSQL runtime data
+# =========================
+postgres/data/
+
+
+# =========================
+# Jsonnet generated files
+# =========================
+grafana/generated/
+grafana/jsonnet/vendor/
+grafana/jsonnet/.cache/
+
+
+# =========================
+# Local backups
+# =========================
+backups/
+
+
+# =========================
+# Bootstrap temporary files
+# =========================
+.env.bak
+
+
+# =========================
+# Local audit files
+# =========================
+project-audit*.txt
+
+
+# =========================
+# macOS
+# =========================
+.DS_Store
+.AppleDouble
+.LSOverride
+
+
+# =========================
+# Editors / IDE
+# =========================
+.vscode/
+.idea/
+
+*.swp
+*.swo
+*~
+
+
+# =========================
+# Temporary / logs
+# =========================
+*.tmp
+*.temp
+*.log
+*.pid
+
+
+# =========================
+# Docker local overrides
+# =========================
+compose.override.yaml
+docker-compose.override.yml
