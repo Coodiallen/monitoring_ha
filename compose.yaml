@@ -20,6 +20,19 @@ services:
     networks:
       - monitoring
 
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.5.1
+    restart: unless-stopped
+
+    command:
+      - --nginx.scrape-uri=http://nginx/nginx_status
+
+    depends_on:
+      - nginx
+
+    networks:
+      - monitoring
+
   grafana-1:
     build:
       context: ./grafana
@@ -45,6 +58,12 @@ services:
 
       PROMETHEUS_BASIC_AUTH_PASSWORD: ${PROMETHEUS_BASIC_AUTH_PASSWORD}
       INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+
+      GF_RENDERING_SERVER_URL: http://renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://grafana-1:3000/
+      GF_RENDERING_RENDERER_TOKEN: ${GRAFANA_RENDERER_TOKEN}
+
+      GF_METRICS_ENABLED: "true"
 
     entrypoint:
       - /bin/sh
@@ -89,12 +108,29 @@ services:
       GF_AUTH_GITLAB_CLIENT_ID: ${GITLAB_CLIENT_ID}
       GF_AUTH_GITLAB_CLIENT_SECRET: ${GITLAB_CLIENT_SECRET}
 
+      GF_RENDERING_SERVER_URL: http://renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://grafana-2:3000/
+      GF_RENDERING_RENDERER_TOKEN: ${GRAFANA_RENDERER_TOKEN}
+
+      GF_METRICS_ENABLED: "true"
+
     volumes:
       - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro
 
     depends_on:
       postgres:
         condition: service_healthy
+
+    networks:
+      - monitoring
+
+  renderer:
+    image: grafana/grafana-image-renderer:v5.12.3
+    restart: unless-stopped
+
+    environment:
+      ENABLE_METRICS: "true"
+      AUTH_TOKEN: ${GRAFANA_RENDERER_TOKEN}
 
     networks:
       - monitoring
@@ -183,6 +219,40 @@ services:
     networks:
       - monitoring
 
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    restart: unless-stopped
+
+    environment:
+      DATA_SOURCE_URI: postgres:5432/grafana?sslmode=disable
+      DATA_SOURCE_USER: postgres_exporter
+      DATA_SOURCE_PASS: ${POSTGRES_EXPORTER_PASSWORD}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - monitoring
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.5
+    restart: unless-stopped
+
+    privileged: true
+
+    devices:
+      - /dev/kmsg:/dev/kmsg
+
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+
+    networks:
+      - monitoring
 
 networks:
   monitoring:
