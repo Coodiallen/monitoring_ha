@@ -1,90 +1,93 @@
-# Monitoring Stack
+# Monitoring HA Stack
 
-Docker-based monitoring lab with Grafana high availability, Prometheus, InfluxDB, PostgreSQL, nginx load balancing, Jsonnet/grafonnet dashboards, GitLab OAuth and local TLS.
+Docker-based monitoring stack with highly available Grafana, Prometheus, PostgreSQL, nginx load balancing, exporters, container monitoring, GitLab OAuth and local TLS.
 
 ## Architecture
 
 ```text
-                     PostgreSQL
-                    /          \
-             Grafana-1        Grafana-2
-                    \          /
-                       nginx
-                         |
-                  https://grafana.local
+                    PostgreSQL
+                       │
+             ┌─────────┴─────────┐
+             │                   │
+         Grafana-1           Grafana-2
+             │                   │
+             └─────────┬─────────┘
+                       │
+                     nginx
+                       │
+              https://grafana.local
 
-Prometheus ---> node_exporter
-InfluxDB ----> Grafana
+
+Prometheus
+├── Prometheus self-monitoring
+├── Grafana-1 / Grafana-2
+├── node_exporter
+├── nginx-exporter
+├── postgres-exporter
+└── cAdvisor
+
+Grafana ── InfluxDB
+Grafana ── Image Renderer
 ```
 
-Both Grafana instances use the same PostgreSQL database.
-nginx distributes requests between the two Grafana instances.
+Both Grafana instances use the same PostgreSQL database and run in active-active mode behind nginx.
 
-## Technologies
+## Components
 
 - Grafana 13.2.1 x2
 - PostgreSQL 17
-- nginx
 - Prometheus 3.14.0
+- nginx
+- nginx-prometheus-exporter 1.5.1
+- postgres_exporter 0.20.1
 - node_exporter 1.9.1
+- cAdvisor 0.60.5
+- Grafana Image Renderer 5.12.3
 - InfluxDB 2.7
 - Docker Compose
 - Jsonnet / grafonnet
 - GitLab OAuth
-- TLS with a local CA
+- Local TLS CA
 
+## Features
+
+- Grafana active-active HA behind nginx
+- Shared PostgreSQL backend
+- Prometheus TLS + Basic Auth
+- Grafana GitLab OAuth
+- Grafana Image Renderer
+- Prometheus monitoring of both Grafana instances
+- nginx and PostgreSQL exporters
+- Container CPU, RAM, network and disk metrics via cAdvisor
+- Provisioned dashboards from JSON
+- Jsonnet/grafonnet dashboard sources
+- Local TLS certificates generated during bootstrap
 
 ## Quick Start
 
-Clone the repository:
-
 ```bash
-git clone <repository-url>
-cd monitoring
-```
+git clone git@github.com:Coodiallen/monitoring_ha.git
+cd monitoring_ha
 
-Run the bootstrap script:
-
-```bash
 chmod +x bootstrap.sh
 ./bootstrap.sh
 ```
 
-The script prepares:
+The bootstrap script automatically prepares:
 
 - `.env`
-- local secrets
+- passwords and local secrets
+- Grafana renderer token
+- PostgreSQL exporter user
 - TLS certificates
-- `prometheus/web.yml`
+- Prometheus web configuration
 - runtime directories
-- Docker Compose services
-
-GitLab OAuth credentials can be added to `.env` when required.
-
-## Start Manually
-
-If the environment is already prepared:
-
-```bash
-docker compose up -d --build
-```
+- Docker Compose stack
 
 Check the stack:
 
 ```bash
 docker compose ps
-```
-
-Expected services:
-
-```text
-grafana-1
-grafana-2
-postgres
-nginx
-prometheus
-node-exporter
-influxdb
 ```
 
 ## Access
@@ -107,28 +110,7 @@ InfluxDB:
 http://127.0.0.1:8086
 ```
 
-Local hostnames are added through `/etc/hosts`.
-
-## Grafana HA
-
-Grafana runs in active-active mode behind nginx.
-
-Both instances use the same PostgreSQL database, so users, dashboards, datasources and other shared state are stored centrally.
-
-Failover test:
-
-```bash
-docker compose stop grafana-1
-curl --cacert certs/ca.crt -I https://grafana.local
-
-docker compose start grafana-1
-docker compose stop grafana-2
-curl --cacert certs/ca.crt -I https://grafana.local
-
-docker compose start grafana-2
-```
-
-The Grafana endpoint should remain available while one instance is stopped.
+Local hostnames are added to `/etc/hosts`.
 
 ## Dashboards
 
@@ -136,76 +118,88 @@ Provisioned dashboards are stored in:
 
 ```text
 grafana/dashboards/
-├── Infrastructure/
-├── Network/
-└── Plugins/
 ```
 
-Jsonnet/grafonnet sources are stored in:
+Main dashboard:
 
 ```text
-grafana/jsonnet/
+HA Monitoring Cluster
 ```
 
-Generated JSON files are written to:
+It contains dedicated sections for:
 
-```text
-grafana/generated/
+- Prometheus
+- PostgreSQL
+- Grafana
+- nginx
+
+The dashboard combines application metrics with container CPU, RAM, network, storage and disk I/O metrics.
+
+## HA Test
+
+Grafana should remain available while either instance is stopped:
+
+```bash
+docker compose stop grafana-1
+curl --cacert certs/ca.crt -I https://grafana.local
+docker compose start grafana-1
 ```
 
-and are excluded from Git.
-
-## Grafana Plugins
-
-The custom Grafana image includes:
-
-- Google Sheets datasource
-- D3 Gauge panel
-
-The image is built automatically by Docker Compose.
+The same test can be repeated with `grafana-2`.
 
 ## Security
 
-The project keeps sensitive and runtime files out of Git, including:
+Sensitive and runtime files are excluded from Git:
 
 - `.env`
 - `secrets/*`
-- TLS certificates and private keys
+- generated TLS certificates and private keys
 - `prometheus/web.yml`
-- PostgreSQL, Prometheus and InfluxDB runtime data
-- generated Jsonnet files
+- PostgreSQL data
+- Prometheus data
+- InfluxDB data
 
-Prometheus uses TLS and Basic Auth.
-Grafana supports GitLab OAuth.
+The stack uses:
+
+- TLS
+- Prometheus Basic Auth
+- GitLab OAuth
+- Grafana shared secret key
+- authenticated Image Renderer
+- dedicated PostgreSQL monitoring user
+
+## Project Structure
+
+```text
+.
+├── bootstrap.sh
+├── compose.yaml
+├── .env.example
+├── grafana/
+│   ├── dashboards/
+│   ├── jsonnet/
+│   └── provisioning/
+├── nginx/
+├── prometheus/
+├── certs/
+├── secrets/
+└── scripts/
+```
 
 ## Useful Commands
 
-View logs:
-
 ```bash
+docker compose ps
 docker compose logs -f
-```
-
-Grafana logs:
-
-```bash
 docker compose logs -f grafana-1 grafana-2
-```
-
-Check nginx configuration:
-
-```bash
+docker compose exec prometheus promtool check config /etc/prometheus/prometheus.yml
 docker compose exec nginx nginx -t
-```
-
-Check PostgreSQL:
-
-```bash
-docker compose exec postgres   psql -U grafana -d grafana -c '\dt'
-```
-
-Stop the stack:
-
-```bash
 docker compose down
 ```
+
+## Planned Improvements
+
+- Telegram alerts
+- Grafana teams and permissions
+- Dashboard playlist
+- Exact pinning of remaining Docker image versions
