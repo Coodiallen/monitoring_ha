@@ -109,6 +109,39 @@ else
 fi
 
 # ---------------------------------------------------------
+# Grafana admin password
+# ---------------------------------------------------------
+
+if [ -z "$(get_env_value GRAFANA_ADMIN_PASSWORD || true)" ]; then
+    echo
+    echo "==> Configure Grafana admin password"
+
+    while true; do
+        read -r -s -p "Grafana admin password: " GRAFANA_ADMIN_PASSWORD
+        echo
+
+        read -r -s -p "Confirm Grafana admin password: " GRAFANA_ADMIN_PASSWORD_CONFIRM
+        echo
+
+        if [ -z "$GRAFANA_ADMIN_PASSWORD" ]; then
+            echo "Password cannot be empty."
+            continue
+        fi
+
+        if [ "$GRAFANA_ADMIN_PASSWORD" != "$GRAFANA_ADMIN_PASSWORD_CONFIRM" ]; then
+            echo "Passwords do not match."
+            continue
+        fi
+
+        break
+    done
+
+    set_env_value "GRAFANA_ADMIN_PASSWORD" "$GRAFANA_ADMIN_PASSWORD"
+else
+    echo "==> GRAFANA_ADMIN_PASSWORD already configured."
+fi
+
+# ---------------------------------------------------------
 # GitLab OAuth
 # ---------------------------------------------------------
 
@@ -317,25 +350,81 @@ EOF
 chmod 600 prometheus/web.yml
 
 # ---------------------------------------------------------
+# Prometheus Linux permissions
+# ---------------------------------------------------------
+
+echo
+echo "==> Configuring Prometheus filesystem permissions..."
+
+PROMETHEUS_UID="$(
+    docker run --rm \
+        --entrypoint /bin/sh \
+        prom/prometheus:v3.14.0 \
+        -c 'id -u'
+)"
+
+PROMETHEUS_GID="$(
+    docker run --rm \
+        --entrypoint /bin/sh \
+        prom/prometheus:v3.14.0 \
+        -c 'id -g'
+)"
+
+echo "Prometheus container UID:GID = ${PROMETHEUS_UID}:${PROMETHEUS_GID}"
+
+if [ "$(uname -s)" = "Linux" ]; then
+    echo "Applying Linux ownership and permissions..."
+
+    sudo chown -R \
+        "${PROMETHEUS_UID}:${PROMETHEUS_GID}" \
+        prometheus/data
+
+    sudo chmod 755 prometheus/data
+
+    sudo chown \
+        root:"${PROMETHEUS_GID}" \
+        certs/prometheus.key
+
+    sudo chmod 640 certs/prometheus.key
+
+    chmod 644 \
+        certs/prometheus.crt \
+        certs/ca.crt \
+        prometheus/web.yml
+
+    echo "Prometheus permissions configured."
+else
+    echo "Non-Linux host detected. Skipping Linux ownership changes."
+fi
+
+# ---------------------------------------------------------
 # /etc/hosts
 # ---------------------------------------------------------
 
 echo
-echo "==> Checking /etc/hosts..."
+echo "==> Configuring /etc/hosts..."
 
-if ! grep -qE '(^|[[:space:]])grafana\.local([[:space:]]|$)' /etc/hosts; then
-    echo "Adding grafana.local to /etc/hosts..."
-    echo "127.0.0.1 grafana.local" | sudo tee -a /etc/hosts >/dev/null
-else
-    echo "grafana.local already exists in /etc/hosts."
-fi
+set_local_host() {
+    local hostname="$1"
 
-if ! grep -qE '(^|[[:space:]])prometheus\.local([[:space:]]|$)' /etc/hosts; then
-    echo "Adding prometheus.local to /etc/hosts..."
-    echo "127.0.0.1 prometheus.local" | sudo tee -a /etc/hosts >/dev/null
-else
-    echo "prometheus.local already exists in /etc/hosts."
-fi
+    if grep -qE "(^|[[:space:]])${hostname//./\\.}([[:space:]]|$)" /etc/hosts; then
+        echo "Updating existing ${hostname} entry..."
+
+        sudo sed -i.bak \
+            "/[[:space:]]${hostname//./\\.}\([[:space:]]\|$\)/d" \
+            /etc/hosts
+    fi
+
+    echo "127.0.0.1 ${hostname}" \
+        | sudo tee -a /etc/hosts >/dev/null
+
+    echo "${hostname} -> 127.0.0.1"
+}
+
+set_local_host "grafana.local"
+set_local_host "prometheus.local"
+
+sudo rm -f /etc/hosts.bak
 
 # ---------------------------------------------------------
 # Validation
