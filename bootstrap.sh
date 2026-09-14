@@ -200,6 +200,12 @@ else
     PROMETHEUS_PASSWORD="$(cat "$PROM_PASSWORD_FILE")"
 fi
 
+# Grafana needs the same password for its Prometheus datasource.
+# .env is excluded from Git.
+set_env_value \
+    "PROMETHEUS_BASIC_AUTH_PASSWORD" \
+    "$PROMETHEUS_PASSWORD"
+
 echo "==> Generating Prometheus bcrypt hash..."
 
 PROMETHEUS_BCRYPT_HASH="$(
@@ -228,6 +234,12 @@ if [ ! -s secrets/influxdb-admin-token ]; then
 else
     echo "==> InfluxDB admin token already exists."
 fi
+
+INFLUXDB_TOKEN="$(tr -d '\n' < secrets/influxdb-admin-token)"
+
+set_env_value \
+    "INFLUXDB_TOKEN" \
+    "$INFLUXDB_TOKEN"
 
 # ---------------------------------------------------------
 # CA
@@ -380,6 +392,12 @@ if [ "$(uname -s)" = "Linux" ]; then
         prometheus/data
 
     sudo chmod 755 prometheus/data
+
+    sudo chown \
+        "$(id -u):${PROMETHEUS_GID}" \
+        "$PROM_PASSWORD_FILE"
+
+    sudo chmod 640 "$PROM_PASSWORD_FILE"
 
     sudo chown \
         root:"${PROMETHEUS_GID}" \

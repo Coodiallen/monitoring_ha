@@ -35,7 +35,6 @@ services:
 
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
-
       GF_SECURITY_SECRET_KEY: ${GRAFANA_SECRET_KEY}
 
       GF_SERVER_DOMAIN: grafana.local
@@ -44,13 +43,14 @@ services:
       GF_AUTH_GITLAB_CLIENT_ID: ${GITLAB_CLIENT_ID}
       GF_AUTH_GITLAB_CLIENT_SECRET: ${GITLAB_CLIENT_SECRET}
 
+      PROMETHEUS_BASIC_AUTH_PASSWORD: ${PROMETHEUS_BASIC_AUTH_PASSWORD}
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+
     entrypoint:
       - /bin/sh
       - -c
       - |
-        export PROMETHEUS_BASIC_AUTH_PASSWORD="$$(cat /run/secrets/prometheus_basic_auth_password)"
         export PROMETHEUS_CA_CERT="$$(cat /etc/grafana/certs/ca.crt)"
-        export INFLUXDB_TOKEN="$$(cat /run/secrets/influxdb_admin_token)"
         exec /run.sh
 
     volumes:
@@ -58,10 +58,6 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - ./certs/ca.crt:/etc/grafana/certs/ca.crt:ro
-
-    secrets:
-      - prometheus_basic_auth_password
-      - influxdb_admin_token
 
     depends_on:
       postgres:
