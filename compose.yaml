@@ -151,6 +151,7 @@ services:
       - ./certs/prometheus.crt:/etc/prometheus/certs/prometheus.crt:ro
       - ./certs/prometheus.key:/etc/prometheus/certs/prometheus.key:ro
       - ./certs/ca.crt:/etc/prometheus/certs/ca.crt:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
 
     secrets:
       - prometheus_basic_auth_password
@@ -254,13 +255,44 @@ services:
     networks:
       - monitoring
 
+  alertmanager:
+    image: quay.io/prometheus/alertmanager:v0.34.0
+    restart: unless-stopped
+
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+
+    secrets:
+      - telegram_bot_token
+      - telegram_chat_id
+
+    ports:
+      - "127.0.0.1:9093:9093"
+
+    networks:
+      - monitoring
+
 networks:
   monitoring:
     driver: bridge
 
+volumes:
+  alertmanager_data:
+
 secrets:
   prometheus_basic_auth_password:
     file: ./secrets/prometheus-basic-auth-password
+
+  telegram_bot_token:
+    file: ./secrets/telegram-bot-token
+
+  telegram_chat_id:
+    file: ./secrets/telegram-chat-id
 
   influxdb_admin_password:
     file: ./secrets/influxdb-admin-password

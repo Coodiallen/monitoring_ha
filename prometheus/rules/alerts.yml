@@ -1,0 +1,178 @@
+groups:
+
+  # ==========================================================
+  # Target availability
+  # ==========================================================
+
+  - name: availability
+    interval: 15s
+
+    rules:
+
+      - alert: GrafanaNodeDown
+        expr: up{job="grafana"} == 0
+        for: 1m
+
+        labels:
+          severity: critical
+          env: dev
+
+        annotations:
+          summary: "Grafana instance {{ $labels.instance }} is down"
+          description: "Prometheus has been unable to scrape Grafana instance {{ $labels.instance }} for more than 1 minute."
+
+
+      - alert: PostgreSQLDown
+        expr: |
+          (up{job="postgres"} == 0)
+          or
+          (pg_up == 0)
+        for: 1m
+
+        labels:
+          severity: critical
+          env: dev
+
+        annotations:
+          summary: "PostgreSQL monitoring is unavailable on {{ $labels.instance }}"
+          description: "The PostgreSQL exporter cannot be scraped or cannot connect to PostgreSQL."
+
+
+      - alert: NginxDown
+        expr: |
+          (up{job="nginx"} == 0)
+          or
+          (nginx_up == 0)
+        for: 1m
+
+        labels:
+          severity: critical
+          env: dev
+
+        annotations:
+          summary: "nginx monitoring is unavailable on {{ $labels.instance }}"
+          description: "The nginx exporter cannot be scraped or nginx itself is unavailable."
+
+
+      - alert: PrometheusTargetDown
+        expr: |
+          up{
+            job!~"grafana|postgres|nginx"
+          } == 0
+        for: 1m
+
+        labels:
+          severity: critical
+          env: dev
+
+        annotations:
+          summary: "Prometheus target {{ $labels.instance }} is down"
+          description: "Target {{ $labels.instance }} from job {{ $labels.job }} has been unreachable for more than 1 minute."
+
+
+  # ==========================================================
+  # Host resources
+  # ==========================================================
+
+  - name: host-resources
+    interval: 30s
+
+    rules:
+
+      - alert: HighCPU
+        expr: |
+          (
+            100
+            -
+            (
+              avg by (instance) (
+                rate(node_cpu_seconds_total{mode="idle"}[5m])
+              )
+              * 100
+            )
+          ) > 85
+        for: 5m
+
+        labels:
+          severity: warning
+          env: dev
+
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage has been above 85% for more than 5 minutes. Current value: {{ printf \"%.2f\" $value }}%."
+
+
+      - alert: HighMemory
+        expr: |
+          (
+            1
+            -
+            (
+              node_memory_MemAvailable_bytes
+              /
+              node_memory_MemTotal_bytes
+            )
+          ) * 100 > 85
+        for: 5m
+
+        labels:
+          severity: warning
+          env: dev
+
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage has been above 85% for more than 5 minutes. Current value: {{ printf \"%.2f\" $value }}%."
+
+
+      - alert: LowDiskSpace
+        expr: |
+          (
+            node_filesystem_avail_bytes{
+              mountpoint="/",
+              fstype!~"tmpfs|overlay"
+            }
+            /
+            node_filesystem_size_bytes{
+              mountpoint="/",
+              fstype!~"tmpfs|overlay"
+            }
+          ) * 100 < 15
+        for: 5m
+
+        labels:
+          severity: warning
+          env: dev
+
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Less than 15% free space remains on the root filesystem. Current free space: {{ printf \"%.2f\" $value }}%."
+
+
+  # ==========================================================
+  # Prometheus
+  # ==========================================================
+
+  - name: prometheus
+    interval: 30s
+
+    rules:
+
+      - alert: CompactionTimeTooLong
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (instance, le) (
+              rate(
+                prometheus_tsdb_compaction_duration_seconds_bucket[5m]
+              )
+            )
+          ) >= 1
+        for: 5m
+
+        labels:
+          severity: warning
+          env: dev
+
+        annotations:
+          summary: "Compaction time on {{ $labels.instance }} equals {{ $value }}"
+          description: "The 95th percentile of Prometheus TSDB compaction duration has been at least 1 second for more than 5 minutes."

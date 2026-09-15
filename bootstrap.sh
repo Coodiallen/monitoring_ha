@@ -20,6 +20,9 @@ GRAFANA_CERT="certs/grafana.crt"
 PROMETHEUS_KEY="certs/prometheus.key"
 PROMETHEUS_CERT="certs/prometheus.crt"
 
+TELEGRAM_BOT_TOKEN_FILE="secrets/telegram-bot-token"
+TELEGRAM_CHAT_ID_FILE="secrets/telegram-chat-id"
+
 echo "==> Monitoring stack bootstrap"
 echo
 
@@ -385,6 +388,55 @@ chmod 600 \
 
 
 # ============================================================
+# Telegram Alertmanager credentials
+# ============================================================
+
+if [[ ! -s "$TELEGRAM_BOT_TOKEN_FILE" ]]; then
+    echo
+    echo "==> Configure Telegram alerting"
+
+    while true; do
+        read -r -s -p "Telegram bot token: " TELEGRAM_BOT_TOKEN
+        echo
+
+        if [[ -n "$TELEGRAM_BOT_TOKEN" ]]; then
+            break
+        fi
+
+        echo "Telegram bot token cannot be empty."
+    done
+
+    printf '%s\n' "$TELEGRAM_BOT_TOKEN" \
+        > "$TELEGRAM_BOT_TOKEN_FILE"
+
+    unset TELEGRAM_BOT_TOKEN
+fi
+
+if [[ ! -s "$TELEGRAM_CHAT_ID_FILE" ]]; then
+    while true; do
+        read -r -p "Telegram chat ID: " TELEGRAM_CHAT_ID
+
+        if [[ "$TELEGRAM_CHAT_ID" =~ ^-?[0-9]+$ ]]; then
+            break
+        fi
+
+        echo "Telegram chat ID must be an integer."
+    done
+
+    printf '%s\n' "$TELEGRAM_CHAT_ID" \
+        > "$TELEGRAM_CHAT_ID_FILE"
+
+    unset TELEGRAM_CHAT_ID
+fi
+
+chmod 600 \
+    "$TELEGRAM_BOT_TOKEN_FILE" \
+    "$TELEGRAM_CHAT_ID_FILE"
+
+echo "Telegram alerting credentials prepared."
+
+
+# ============================================================
 # Local Certificate Authority
 # ============================================================
 
@@ -542,7 +594,16 @@ PROMETHEUS_GID="$(
         -c 'id -g'
 )"
 
+ALERTMANAGER_GID="$(
+    docker run \
+        --rm \
+        --entrypoint /bin/sh \
+        quay.io/prometheus/alertmanager:v0.34.0 \
+        -c 'id -g'
+)"
+
 echo "Prometheus container UID:GID = ${PROMETHEUS_UID}:${PROMETHEUS_GID}"
+echo "Alertmanager container GID = ${ALERTMANAGER_GID}"
 
 case "$(uname -s)" in
 
@@ -580,7 +641,16 @@ case "$(uname -s)" in
             "$CA_KEY" \
             "$GRAFANA_KEY"
 
-        echo "Prometheus permissions configured."
+        sudo chown \
+            "$(id -u):${ALERTMANAGER_GID}" \
+            "$TELEGRAM_BOT_TOKEN_FILE" \
+            "$TELEGRAM_CHAT_ID_FILE"
+
+        chmod 640 \
+            "$TELEGRAM_BOT_TOKEN_FILE" \
+            "$TELEGRAM_CHAT_ID_FILE"
+
+        echo "Prometheus and Alertmanager permissions configured."
         ;;
 
     Darwin)
@@ -590,7 +660,9 @@ case "$(uname -s)" in
             "$PROM_PASSWORD_FILE" \
             "$CA_KEY" \
             "$GRAFANA_KEY" \
-            "$PROMETHEUS_KEY"
+            "$PROMETHEUS_KEY" \
+            "$TELEGRAM_BOT_TOKEN_FILE" \
+            "$TELEGRAM_CHAT_ID_FILE"
 
         chmod 644 \
             "$CA_CERT" \
@@ -788,6 +860,7 @@ REQUIRED_SERVICES=(
     nginx
     nginx-exporter
     prometheus
+    alertmanager
     node-exporter
     cadvisor
     influxdb
@@ -841,6 +914,32 @@ fi
 
 
 echo
+echo "==> Checking Prometheus alert rules..."
+
+if docker compose exec -T prometheus \
+    promtool check rules /etc/prometheus/rules/alerts.yml
+then
+    echo "Prometheus alert rules are valid."
+else
+    echo "Prometheus alert rules validation failed."
+    BOOTSTRAP_FAILED=1
+fi
+
+
+echo
+echo "==> Checking Alertmanager configuration..."
+
+if docker compose exec -T alertmanager \
+    amtool check-config /etc/alertmanager/alertmanager.yml
+then
+    echo "Alertmanager configuration is valid."
+else
+    echo "Alertmanager configuration validation failed."
+    BOOTSTRAP_FAILED=1
+fi
+
+
+echo
 echo "==> Checking nginx configuration..."
 
 if docker compose exec -T nginx nginx -t; then
@@ -875,6 +974,9 @@ echo "  https://grafana.local"
 echo
 echo "Prometheus:"
 echo "  https://prometheus.local:9090"
+echo
+echo "Alertmanager:"
+echo "  http://127.0.0.1:9093"
 echo
 echo "InfluxDB:"
 echo "  http://127.0.0.1:8086"

@@ -1,7 +1,18 @@
 global:
   scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
 
 scrape_configs:
+
   - job_name: prometheus
 
     scheme: https
@@ -18,18 +29,23 @@ scrape_configs:
       - targets:
           - prometheus:9090
 
+
   - job_name: node-exporter
 
     static_configs:
       - targets:
           - node-exporter:9100
 
+
   - job_name: nginx
+
     static_configs:
       - targets:
           - nginx-exporter:9113
 
+
   - job_name: grafana
+
     metrics_path: /metrics
 
     static_configs:
@@ -37,12 +53,23 @@ scrape_configs:
           - grafana-1:3000
           - grafana-2:3000
 
+
   - job_name: postgres
+
     static_configs:
       - targets:
           - postgres-exporter:9187
 
+
   - job_name: cadvisor
+
     static_configs:
       - targets:
           - cadvisor:8080
+
+
+  - job_name: alertmanager
+
+    static_configs:
+      - targets:
+          - alertmanager:9093
