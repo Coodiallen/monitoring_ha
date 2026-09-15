@@ -1,0 +1,3 @@
+100 * avg by(instance) (
+  irate(node_cpu_seconds_total{job="node-exporter",mode="user"}[5m])
+)

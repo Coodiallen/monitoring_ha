@@ -1,0 +1,33 @@
+[
+  {
+    "targets": [
+      "grafana-1:3000",
+      "grafana-2:3000"
+    ],
+    "labels": {
+      "service": "grafana",
+      "env": "dev",
+      "role": "application"
+    }
+  },
+  {
+    "targets": [
+      "postgres-exporter:9187"
+    ],
+    "labels": {
+      "service": "postgres",
+      "env": "dev",
+      "role": "database"
+    }
+  },
+  {
+    "targets": [
+      "nginx-exporter:9113"
+    ],
+    "labels": {
+      "service": "nginx",
+      "env": "dev",
+      "role": "load-balancer"
+    }
+  }
+]

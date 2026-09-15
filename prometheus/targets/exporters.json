@@ -1,0 +1,32 @@
+[
+  {
+    "targets": [
+      "node-exporter:9100"
+    ],
+    "labels": {
+      "service": "node-exporter",
+      "env": "dev",
+      "role": "system"
+    }
+  },
+  {
+    "targets": [
+      "cadvisor:8080"
+    ],
+    "labels": {
+      "service": "cadvisor",
+      "env": "dev",
+      "role": "containers"
+    }
+  },
+  {
+    "targets": [
+      "alertmanager:9093"
+    ],
+    "labels": {
+      "service": "alertmanager",
+      "env": "dev",
+      "role": "alerting"
+    }
+  }
+]

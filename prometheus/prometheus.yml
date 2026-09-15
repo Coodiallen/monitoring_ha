@@ -13,6 +13,10 @@ alerting:
 
 scrape_configs:
 
+  # ==========================================================
+  # Prometheus self-monitoring
+  # ==========================================================
+
   - job_name: prometheus
 
     scheme: https
@@ -30,46 +34,28 @@ scrape_configs:
           - prometheus:9090
 
 
-  - job_name: node-exporter
+  # ==========================================================
+  # File-based service discovery
+  # ==========================================================
 
-    static_configs:
-      - targets:
-          - node-exporter:9100
+  - job_name: discovered-targets
 
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/*.json
 
-  - job_name: nginx
+        refresh_interval: 30s
 
-    static_configs:
-      - targets:
-          - nginx-exporter:9113
+    relabel_configs:
 
+      # Use "service" from target files as the real Prometheus
+      # job label. This keeps existing dashboards and alerts
+      # compatible with job="grafana", job="postgres", etc.
+      - source_labels:
+          - service
 
-  - job_name: grafana
+        target_label: job
 
-    metrics_path: /metrics
-
-    static_configs:
-      - targets:
-          - grafana-1:3000
-          - grafana-2:3000
-
-
-  - job_name: postgres
-
-    static_configs:
-      - targets:
-          - postgres-exporter:9187
-
-
-  - job_name: cadvisor
-
-    static_configs:
-      - targets:
-          - cadvisor:8080
-
-
-  - job_name: alertmanager
-
-    static_configs:
-      - targets:
-          - alertmanager:9093
+      # service is only an intermediate discovery label.
+      - action: labeldrop
+        regex: service

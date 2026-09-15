@@ -1,0 +1,11 @@
+100 * (
+  node_filesystem_avail_bytes{
+    job="node-exporter",
+    mountpoint="/"
+  }
+  /
+  node_filesystem_size_bytes{
+    job="node-exporter",
+    mountpoint="/"
+  }
+)

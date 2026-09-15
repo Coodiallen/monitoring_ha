@@ -152,6 +152,7 @@ services:
       - ./certs/prometheus.key:/etc/prometheus/certs/prometheus.key:ro
       - ./certs/ca.crt:/etc/prometheus/certs/ca.crt:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ./prometheus/targets:/etc/prometheus/targets:ro
 
     secrets:
       - prometheus_basic_auth_password
@@ -191,8 +192,19 @@ services:
     image: prom/node-exporter:v1.9.1
     restart: unless-stopped
 
+    pid: host
+
     command:
       - --web.listen-address=:9100
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.interrupts
+
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro,rslave
 
     networks:
       - monitoring
