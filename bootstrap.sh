@@ -20,6 +20,9 @@ GRAFANA_CERT="certs/grafana.crt"
 PROMETHEUS_KEY="certs/prometheus.key"
 PROMETHEUS_CERT="certs/prometheus.crt"
 
+PROMETHEUS_REPLICA_KEY="certs/prometheus-replica.key"
+PROMETHEUS_REPLICA_CERT="certs/prometheus-replica.crt"
+
 TELEGRAM_BOT_TOKEN_FILE="secrets/telegram-bot-token"
 TELEGRAM_CHAT_ID_FILE="secrets/telegram-chat-id"
 
@@ -103,7 +106,7 @@ generate_base64() {
 
 echo "==> Checking required commands..."
 
-for cmd in docker openssl awk sed grep; do
+for cmd in docker openssl awk sed grep jq; do
     command -v "$cmd" >/dev/null 2>&1 \
         || die "Required command not found: $cmd"
 done
@@ -129,6 +132,7 @@ mkdir -p \
     secrets \
     prometheus/data \
     prometheus/federation/data \
+    prometheus/replica/data \
     postgres/data \
     influxdb/data \
     influxdb/config \
@@ -556,6 +560,52 @@ fi
 
 
 # ============================================================
+# Prometheus Replica TLS certificate
+# ============================================================
+
+if [[ ! -f "$PROMETHEUS_REPLICA_KEY" || ! -f "$PROMETHEUS_REPLICA_CERT" ]]; then
+    echo "==> Generating Prometheus Replica TLS certificate..."
+
+    rm -f \
+        "$PROMETHEUS_REPLICA_KEY" \
+        "$PROMETHEUS_REPLICA_CERT" \
+        certs/prometheus-replica.csr \
+        certs/prometheus-replica.ext
+
+    openssl genrsa \
+        -out "$PROMETHEUS_REPLICA_KEY" \
+        2048
+
+    openssl req \
+        -new \
+        -key "$PROMETHEUS_REPLICA_KEY" \
+        -out certs/prometheus-replica.csr \
+        -subj "/CN=prometheus-replica"
+
+    cat > certs/prometheus-replica.ext <<'EOF'
+subjectAltName = DNS:prometheus-replica,DNS:prometheus-replica.local
+extendedKeyUsage = serverAuth
+keyUsage = digitalSignature,keyEncipherment
+EOF
+
+    openssl x509 \
+        -req \
+        -in certs/prometheus-replica.csr \
+        -CA "$CA_CERT" \
+        -CAkey "$CA_KEY" \
+        -CAcreateserial \
+        -out "$PROMETHEUS_REPLICA_CERT" \
+        -days 825 \
+        -sha256 \
+        -extfile certs/prometheus-replica.ext
+
+    rm -f \
+        certs/prometheus-replica.csr \
+        certs/prometheus-replica.ext
+fi
+
+
+# ============================================================
 # Prometheus web config
 # ============================================================
 
@@ -614,11 +664,13 @@ case "$(uname -s)" in
         sudo chown -R \
             "${PROMETHEUS_UID}:${PROMETHEUS_GID}" \
             prometheus/data \
-            prometheus/federation/data
+            prometheus/federation/data \
+            prometheus/replica/data
 
         sudo chmod 755 \
             prometheus/data \
-            prometheus/federation/data
+            prometheus/federation/data \
+            prometheus/replica/data
 
         sudo chown \
             "$(id -u):${PROMETHEUS_GID}" \
@@ -629,14 +681,17 @@ case "$(uname -s)" in
 
         sudo chown \
             "root:${PROMETHEUS_GID}" \
-            "$PROMETHEUS_KEY"
+            "$PROMETHEUS_KEY" \
+            "$PROMETHEUS_REPLICA_KEY"
 
         sudo chmod 640 \
-            "$PROMETHEUS_KEY"
+            "$PROMETHEUS_KEY" \
+            "$PROMETHEUS_REPLICA_KEY"
 
         chmod 644 \
             "$CA_CERT" \
             "$PROMETHEUS_CERT" \
+            "$PROMETHEUS_REPLICA_CERT" \
             "$GRAFANA_CERT" \
             prometheus/web.yml
 
@@ -664,12 +719,14 @@ case "$(uname -s)" in
             "$CA_KEY" \
             "$GRAFANA_KEY" \
             "$PROMETHEUS_KEY" \
+            "$PROMETHEUS_REPLICA_KEY" \
             "$TELEGRAM_BOT_TOKEN_FILE" \
             "$TELEGRAM_CHAT_ID_FILE"
 
         chmod 644 \
             "$CA_CERT" \
             "$PROMETHEUS_CERT" \
+            "$PROMETHEUS_REPLICA_CERT" \
             "$GRAFANA_CERT" \
             prometheus/web.yml
         ;;
@@ -709,6 +766,7 @@ set_local_host() {
 
 set_local_host "grafana.local"
 set_local_host "prometheus.local"
+set_local_host "prometheus-replica.local"
 
 sudo rm -f /etc/hosts.bak
 
@@ -863,6 +921,7 @@ REQUIRED_SERVICES=(
     nginx
     nginx-exporter
     prometheus
+    prometheus-replica
     alertmanager
     node-exporter
     cadvisor
@@ -918,6 +977,18 @@ else
 fi
 
 echo
+echo "==> Checking Prometheus Replica configuration..."
+
+if docker compose exec -T prometheus-replica \
+    promtool check config /etc/prometheus/prometheus.yml
+then
+    echo "Prometheus Replica configuration is valid."
+else
+    echo "Prometheus Replica configuration validation failed."
+    BOOTSTRAP_FAILED=1
+fi
+
+echo
 echo "==> Checking Federation Prometheus configuration..."
 
 if docker compose exec -T prometheus-federation \
@@ -930,17 +1001,37 @@ else
 fi
 
 echo
-echo "==> Checking Prometheus alert rules..."
+echo "==> Checking all Prometheus rules..."
 
 if docker compose exec -T prometheus \
-    promtool check rules /etc/prometheus/rules/alerts.yml
+    sh -c 'promtool check rules /etc/prometheus/rules/*.yml'
 then
-    echo "Prometheus alert rules are valid."
+    echo "All Prometheus rules are valid."
 else
-    echo "Prometheus alert rules validation failed."
+    echo "Prometheus rules validation failed."
     BOOTSTRAP_FAILED=1
 fi
 
+
+echo
+echo "==> Checking Prometheus file_sd target files..."
+
+TARGET_JSON_FILES=()
+
+while IFS= read -r -d '' file; do
+    TARGET_JSON_FILES+=("$file")
+done < <(find prometheus/targets -type f -name '*.json' -print0 2>/dev/null)
+
+if (( ${#TARGET_JSON_FILES[@]} > 0 )); then
+    if jq empty "${TARGET_JSON_FILES[@]}"; then
+        echo "Prometheus file_sd target files are valid."
+    else
+        echo "Prometheus file_sd target validation failed."
+        BOOTSTRAP_FAILED=1
+    fi
+else
+    echo "[WARN] No Prometheus file_sd target JSON files found."
+fi
 
 echo
 echo "==> Checking Alertmanager configuration..."
@@ -988,8 +1079,14 @@ echo
 echo "Grafana:"
 echo "  https://grafana.local"
 echo
-echo "Prometheus:"
+echo "Prometheus Primary:"
 echo "  https://prometheus.local:9090"
+echo
+echo "Prometheus Replica:"
+echo "  https://prometheus-replica.local:9094"
+echo
+echo "Prometheus Federation:"
+echo "  http://127.0.0.1:9092"
 echo
 echo "Alertmanager:"
 echo "  http://127.0.0.1:9093"

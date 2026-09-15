@@ -8,6 +8,17 @@ groups:
     interval: 15s
 
     rules:
+      - alert: PrometheusPeerDown
+        expr: up{job="prometheus-peer"} == 0
+        for: 1m
+
+        labels:
+          severity: critical
+          env: dev
+
+        annotations:
+          summary: "Prometheus HA peer {{ $labels.instance }} is down"
+          description: "The Prometheus peer has been unreachable for more than 1 minute."
 
       - alert: GrafanaNodeDown
         expr: up{job="grafana"} == 0

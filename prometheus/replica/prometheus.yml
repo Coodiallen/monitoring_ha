@@ -5,12 +5,15 @@ global:
   external_labels:
     type: external
     cluster: monitoring-ha
-    replica: primary
+    replica: replica
+
 
 rule_files:
   - /etc/prometheus/rules/*.yml
 
+
 alerting:
+
   alert_relabel_configs:
     - action: labeldrop
       regex: replica
@@ -24,10 +27,10 @@ alerting:
 scrape_configs:
 
   # ==========================================================
-  # Prometheus HA peer
+  # Self-monitoring
   # ==========================================================
 
-  - job_name: prometheus-peer
+  - job_name: prometheus
 
     scheme: https
 
@@ -43,11 +46,12 @@ scrape_configs:
       - targets:
           - prometheus-replica:9090
 
+
   # ==========================================================
-  # Prometheus self-monitoring
+  # HA peer - primary Prometheus
   # ==========================================================
 
-  - job_name: prometheus
+  - job_name: prometheus-peer
 
     scheme: https
 
@@ -78,17 +82,14 @@ scrape_configs:
 
     relabel_configs:
 
-      # Use "service" from target files as the real Prometheus
-      # job label. This keeps existing dashboards and alerts
-      # compatible with job="grafana", job="postgres", etc.
       - source_labels:
           - service
 
         target_label: job
 
-      # service is only an intermediate discovery label.
       - action: labeldrop
         regex: service
+
 
   # ==========================================================
   # Pushgateway
