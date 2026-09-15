@@ -1,0 +1,152 @@
+groups:
+
+  # ==========================================================
+  # Node CPU
+  # ==========================================================
+
+  - name: node-cpu-recording
+    interval: 30s
+
+    rules:
+
+      - record: instance:node_cpu_user:percent
+        expr: |
+          100 *
+          avg by (instance) (
+            irate(
+              node_cpu_seconds_total{
+                job="node-exporter",
+                mode="user"
+              }[5m]
+            )
+          )
+
+      - record: instance:node_cpu_usage:percent
+        expr: |
+          100 -
+          (
+            100 *
+            avg by (instance) (
+              irate(
+                node_cpu_seconds_total{
+                  job="node-exporter",
+                  mode="idle"
+                }[5m]
+              )
+            )
+          )
+
+
+  # ==========================================================
+  # Node memory
+  # ==========================================================
+
+  - name: node-memory-recording
+    interval: 30s
+
+    rules:
+
+      - record: instance:node_memory_usage:percent
+        expr: |
+          100 *
+          (
+            1 -
+            (
+              node_memory_MemAvailable_bytes{
+                job="node-exporter"
+              }
+              /
+              node_memory_MemTotal_bytes{
+                job="node-exporter"
+              }
+            )
+          )
+
+
+  # ==========================================================
+  # Filesystem
+  # ==========================================================
+
+  - name: node-filesystem-recording
+    interval: 30s
+
+    rules:
+
+      - record: instance:node_root_free_space:percent
+        expr: |
+          100 *
+          (
+            node_filesystem_avail_bytes{
+              job="node-exporter",
+              mountpoint="/",
+              fstype!~"tmpfs|overlay"
+            }
+            /
+            node_filesystem_size_bytes{
+              job="node-exporter",
+              mountpoint="/",
+              fstype!~"tmpfs|overlay"
+            }
+          )
+
+
+  # ==========================================================
+  # Disk I/O
+  # ==========================================================
+
+  - name: node-disk-recording
+    interval: 30s
+
+    rules:
+
+      - record: instance:node_disk_read_bytes:rate5m
+        expr: |
+          sum by (instance) (
+            rate(
+              node_disk_read_bytes_total{
+                job="node-exporter"
+              }[5m]
+            )
+          )
+
+      - record: instance:node_disk_write_bytes:rate5m
+        expr: |
+          sum by (instance) (
+            rate(
+              node_disk_written_bytes_total{
+                job="node-exporter"
+              }[5m]
+            )
+          )
+
+
+  # ==========================================================
+  # Network
+  # ==========================================================
+
+  - name: node-network-recording
+    interval: 30s
+
+    rules:
+
+      - record: instance:node_network_receive_bytes:rate5m
+        expr: |
+          sum by (instance) (
+            rate(
+              node_network_receive_bytes_total{
+                job="node-exporter",
+                device!="lo"
+              }[5m]
+            )
+          )
+
+      - record: instance:node_network_transmit_bytes:rate5m
+        expr: |
+          sum by (instance) (
+            rate(
+              node_network_transmit_bytes_total{
+                job="node-exporter",
+                device!="lo"
+              }[5m]
+            )
+          )

@@ -80,17 +80,7 @@ groups:
     rules:
 
       - alert: HighCPU
-        expr: |
-          (
-            100
-            -
-            (
-              avg by (instance) (
-                rate(node_cpu_seconds_total{mode="idle"}[5m])
-              )
-              * 100
-            )
-          ) > 85
+        expr: instance:node_cpu_usage:percent > 85
         for: 5m
 
         labels:
@@ -103,16 +93,7 @@ groups:
 
 
       - alert: HighMemory
-        expr: |
-          (
-            1
-            -
-            (
-              node_memory_MemAvailable_bytes
-              /
-              node_memory_MemTotal_bytes
-            )
-          ) * 100 > 85
+        expr: instance:node_memory_usage:percent > 85
         for: 5m
 
         labels:
@@ -125,18 +106,7 @@ groups:
 
 
       - alert: LowDiskSpace
-        expr: |
-          (
-            node_filesystem_avail_bytes{
-              mountpoint="/",
-              fstype!~"tmpfs|overlay"
-            }
-            /
-            node_filesystem_size_bytes{
-              mountpoint="/",
-              fstype!~"tmpfs|overlay"
-            }
-          ) * 100 < 15
+        expr: instance:node_root_free_space:percent < 15
         for: 5m
 
         labels:
