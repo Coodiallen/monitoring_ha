@@ -1,67 +1,73 @@
 # Monitoring HA Stack
 
-Docker-based monitoring stack with highly available Grafana, Prometheus, PostgreSQL, nginx load balancing, exporters, container monitoring, GitLab OAuth and local TLS.
+Docker-based monitoring and observability pet project with Grafana HA, Prometheus HA/federation, alerting, exporters, TLS and automated deployment.
 
 ## Architecture
 
 ```text
-                    PostgreSQL
-                       │
-             ┌─────────┴─────────┐
-             │                   │
-         Grafana-1           Grafana-2
-             │                   │
-             └─────────┬─────────┘
-                       │
-                     nginx
-                       │
-              https://grafana.local
+PostgreSQL
+    │
+┌───┴────┐
+│        │
+Grafana-1 Grafana-2
+    │        │
+    └───┬────┘
+        │
+      nginx
+        │
+ https://grafana.local
 
 
-Prometheus
-├── Prometheus self-monitoring
-├── Grafana-1 / Grafana-2
+Targets
 ├── node_exporter
-├── nginx-exporter
-├── postgres-exporter
-└── cAdvisor
+├── cAdvisor
+├── nginx exporter
+├── postgres exporter
+├── Grafana
+├── Pushgateway
+└── Alertmanager
+        │
+   ┌────┴────┐
+   │         │
+Prometheus  Prometheus
+ Primary     Replica
+   │
+   └── /federate ──> Federation Prometheus
 
-Grafana ── InfluxDB
-Grafana ── Image Renderer
+Prometheus ──> Alertmanager ──> Telegram
 ```
 
-Both Grafana instances use the same PostgreSQL database and run in active-active mode behind nginx.
-
-## Components
+## Stack
 
 - Grafana 13.2.1 x2
-- PostgreSQL 17
 - Prometheus 3.14.0
+- Alertmanager 0.34.0
+- PostgreSQL 17
 - nginx
-- nginx-prometheus-exporter 1.5.1
-- postgres_exporter 0.20.1
-- node_exporter 1.9.1
-- cAdvisor 0.60.5
-- Grafana Image Renderer 5.12.3
-- InfluxDB 2.7
+- Pushgateway
+- node_exporter
+- cAdvisor
+- nginx / PostgreSQL exporters
+- Grafana Image Renderer
+- InfluxDB
 - Docker Compose
-- Jsonnet / grafonnet
-- GitLab OAuth
-- Local TLS CA
 
 ## Features
 
 - Grafana active-active HA behind nginx
 - Shared PostgreSQL backend
-- Prometheus TLS + Basic Auth
-- Grafana GitLab OAuth
-- Grafana Image Renderer
-- Prometheus monitoring of both Grafana instances
-- nginx and PostgreSQL exporters
-- Container CPU, RAM, network and disk metrics via cAdvisor
-- Provisioned dashboards from JSON
-- Jsonnet/grafonnet dashboard sources
-- Local TLS certificates generated during bootstrap
+- Prometheus primary + independent replica
+- Prometheus federation
+- `file_sd` service discovery
+- recording and alerting rules
+- Alertmanager + Telegram
+- alert deduplication between Prometheus replicas
+- Pushgateway batch-job metrics
+- host and container monitoring
+- TSDB snapshots
+- GitLab OAuth
+- TLS and Prometheus Basic Auth
+- automated bootstrap from a clean clone
 
 ## Quick Start
 
@@ -73,133 +79,76 @@ chmod +x bootstrap.sh
 ./bootstrap.sh
 ```
 
-The bootstrap script automatically prepares:
-
-- `.env`
-- passwords and local secrets
-- Grafana renderer token
-- PostgreSQL exporter user
-- TLS certificates
-- Prometheus web configuration
-- runtime directories
-- Docker Compose stack
-
 Check the stack:
 
 ```bash
 docker compose ps
 ```
 
+The bootstrap script generates local secrets, TLS certificates, runtime directories, Prometheus authentication and starts the complete stack.
+
 ## Access
 
-Grafana:
-
 ```text
-https://grafana.local
+Grafana                 https://grafana.local
+Prometheus Primary      https://prometheus.local:9090
+Prometheus Replica      https://prometheus-replica.local:9094
+Prometheus Federation   http://127.0.0.1:9092
+Alertmanager            http://127.0.0.1:9093
+Pushgateway             http://127.0.0.1:9091
+InfluxDB                http://127.0.0.1:8086
 ```
 
-Prometheus:
+Local hostnames are added automatically to `/etc/hosts`.
 
-```text
-https://prometheus.local:9090
-```
+## Monitoring
 
-InfluxDB:
-
-```text
-http://127.0.0.1:8086
-```
-
-Local hostnames are added to `/etc/hosts`.
-
-## Dashboards
-
-Provisioned dashboards are stored in:
-
-```text
-grafana/dashboards/
-```
-
-Main dashboard:
+Main provisioned dashboard:
 
 ```text
 HA Monitoring Cluster
 ```
 
-It contains dedicated sections for:
+It includes Prometheus, PostgreSQL, Grafana and nginx metrics together with CPU, memory, filesystem, network and disk I/O monitoring.
 
-- Prometheus
-- PostgreSQL
-- Grafana
-- nginx
+Prometheus configuration:
 
-The dashboard combines application metrics with container CPU, RAM, network, storage and disk I/O metrics.
-
-## HA Test
-
-Grafana should remain available while either instance is stopped:
-
-```bash
-docker compose stop grafana-1
-curl --cacert certs/ca.crt -I https://grafana.local
-docker compose start grafana-1
+```text
+prometheus/
+├── rules/
+├── targets/
+├── replica/
+└── federation/
 ```
 
-The same test can be repeated with `grafana-2`.
+## Backup
+
+Configuration backup:
+
+```bash
+./scripts/backup-monitor.sh
+```
+
+Backup metrics are pushed to Pushgateway and monitored by Prometheus.
+
+Prometheus Primary and Replica also support TSDB snapshots.
 
 ## Security
 
-Sensitive and runtime files are excluded from Git:
+Secrets and runtime data are excluded from Git.
 
-- `.env`
-- `secrets/*`
-- generated TLS certificates and private keys
-- `prometheus/web.yml`
-- PostgreSQL data
-- Prometheus data
-- InfluxDB data
-
-The stack uses:
-
-- TLS
-- Prometheus Basic Auth
-- GitLab OAuth
-- Grafana shared secret key
-- authenticated Image Renderer
-- dedicated PostgreSQL monitoring user
+The stack uses TLS, Prometheus Basic Auth, GitLab OAuth, Docker secrets for Telegram and dedicated PostgreSQL monitoring credentials.
 
 ## Project Structure
 
 ```text
 .
-├── bootstrap.sh
-├── compose.yaml
-├── .env.example
+├── alertmanager/
 ├── grafana/
-│   ├── dashboards/
-│   ├── jsonnet/
-│   └── provisioning/
 ├── nginx/
 ├── prometheus/
-├── certs/
-├── secrets/
-└── scripts/
+├── scripts/
+├── bootstrap.sh
+├── compose.yaml
+└── .env.example
 ```
-
-## Useful Commands
-
-```bash
-docker compose ps
-docker compose logs -f
-docker compose logs -f grafana-1 grafana-2
-docker compose exec prometheus promtool check config /etc/prometheus/prometheus.yml
-docker compose exec nginx nginx -t
-docker compose down
-```
-
-## Planned Improvements
-
-- Telegram alerts
-- Grafana teams and permissions
-- Dashboard playlist
-- Exact pinning of remaining Docker image versions
