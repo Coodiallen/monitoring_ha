@@ -29,5 +29,16 @@
       "env": "dev",
       "role": "load-balancer"
     }
+  },
+  {
+    "targets": [
+      "prometheus-federation:9090"
+    ],
+    "labels": {
+      "service": "prometheus-federation",
+      "env": "dev",
+      "role": "federation"
+    }
   }
 ]
+

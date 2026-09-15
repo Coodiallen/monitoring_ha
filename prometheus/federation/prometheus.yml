@@ -1,0 +1,38 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+  external_labels:
+    cluster: monitoring-federation
+
+scrape_configs:
+
+  # ==========================================================
+  # Federate selected metrics from primary Prometheus
+  # ==========================================================
+
+  - job_name: federation
+
+    honor_labels: true
+
+    metrics_path: /federate
+
+    scheme: https
+
+    basic_auth:
+      username: grafana
+      password_file: /run/secrets/prometheus_basic_auth_password
+
+    tls_config:
+      ca_file: /etc/prometheus/certs/ca.crt
+      server_name: prometheus
+
+    params:
+      match[]:
+        - '{__name__="job:total_avail_disk_space"}'
+        - '{__name__=~"instance:node_.*"}'
+        - '{__name__="up"}'
+
+    static_configs:
+      - targets:
+          - prometheus:9090

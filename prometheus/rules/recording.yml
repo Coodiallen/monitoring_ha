@@ -150,3 +150,20 @@ groups:
               }[5m]
             )
           )
+  # ==========================================================
+  # Federation
+  # ==========================================================
+
+  - name: federation-recording
+    interval: 30s
+
+    rules:
+
+      - record: job:total_avail_disk_space
+        expr: |
+          sum(
+            node_filesystem_avail_bytes{
+              job="node-exporter",
+              fstype!~"tmpfs|overlay"
+            }
+          )

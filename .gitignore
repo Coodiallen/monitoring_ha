@@ -32,7 +32,7 @@ grafana/grafana-data/
 # Prometheus runtime data
 # =========================
 prometheus/data/
-
+prometheus/federation/data/
 
 # =========================
 # InfluxDB runtime data

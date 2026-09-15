@@ -21,6 +21,18 @@ groups:
           summary: "Grafana instance {{ $labels.instance }} is down"
           description: "Prometheus has been unable to scrape Grafana instance {{ $labels.instance }} for more than 1 minute."
 
+      - alert: FederationPrometheusDown
+        expr: up{job="prometheus-federation"} == 0
+        for: 1m
+
+        labels:
+          severity: critical
+          env: dev
+
+        annotations:
+          summary: "Federation Prometheus is down"
+          description: "Primary Prometheus has been unable to scrape the federation Prometheus instance {{ $labels.instance }} for more than 1 minute."
+
 
       - alert: PostgreSQLDown
         expr: |

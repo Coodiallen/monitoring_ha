@@ -128,6 +128,7 @@ mkdir -p \
     certs \
     secrets \
     prometheus/data \
+    prometheus/federation/data \
     postgres/data \
     influxdb/data \
     influxdb/config \
@@ -612,10 +613,12 @@ case "$(uname -s)" in
 
         sudo chown -R \
             "${PROMETHEUS_UID}:${PROMETHEUS_GID}" \
-            prometheus/data
+            prometheus/data \
+            prometheus/federation/data
 
         sudo chmod 755 \
-            prometheus/data
+            prometheus/data \
+            prometheus/federation/data
 
         sudo chown \
             "$(id -u):${PROMETHEUS_GID}" \
@@ -865,6 +868,7 @@ REQUIRED_SERVICES=(
     cadvisor
     influxdb
     pushgateway
+    prometheus-federation
 )
 
 BOOTSTRAP_FAILED=0
@@ -913,6 +917,17 @@ else
     BOOTSTRAP_FAILED=1
 fi
 
+echo
+echo "==> Checking Federation Prometheus configuration..."
+
+if docker compose exec -T prometheus-federation \
+    promtool check config /etc/prometheus/prometheus.yml
+then
+    echo "Federation Prometheus configuration is valid."
+else
+    echo "Federation Prometheus configuration validation failed."
+    BOOTSTRAP_FAILED=1
+fi
 
 echo
 echo "==> Checking Prometheus alert rules..."

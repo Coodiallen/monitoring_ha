@@ -306,6 +306,30 @@ services:
     networks:
       - monitoring
 
+  prometheus-federation:
+    image: prom/prometheus:v3.14.0
+    restart: unless-stopped
+
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+
+    volumes:
+      - ./prometheus/federation/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/federation/data:/prometheus
+      - ./certs/ca.crt:/etc/prometheus/certs/ca.crt:ro
+
+    secrets:
+      - prometheus_basic_auth_password
+
+    ports:
+      - "127.0.0.1:9092:9090"
+
+    depends_on:
+      - prometheus
+
+    networks:
+      - monitoring
 
 networks:
   monitoring:
