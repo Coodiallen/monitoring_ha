@@ -117,6 +117,46 @@ groups:
           summary: "Low disk space on {{ $labels.instance }}"
           description: "Less than 15% free space remains on the root filesystem. Current free space: {{ printf \"%.2f\" $value }}%."
 
+  # ==========================================================
+  # Batch jobs
+  # ==========================================================
+
+  - name: batch-jobs
+    interval: 30s
+
+    rules:
+
+      - alert: BackupJobFailed
+        expr: monitoring_backup_status{job="monitoring_backup"} == 0
+        for: 1m
+
+        labels:
+          severity: critical
+          env: dev
+
+        annotations:
+          summary: "Monitoring configuration backup failed on {{ $labels.instance }}"
+          description: "The latest monitoring configuration backup job finished with an error."
+
+
+      - alert: BackupJobStale
+        expr: |
+          (
+            time()
+            -
+            monitoring_backup_last_success_timestamp_seconds{
+              job="monitoring_backup"
+            }
+          ) > 86400
+        for: 5m
+
+        labels:
+          severity: warning
+          env: dev
+
+        annotations:
+          summary: "Monitoring backup on {{ $labels.instance }} is stale"
+          description: "No successful monitoring configuration backup has completed for more than 24 hours."
 
   # ==========================================================
   # Prometheus

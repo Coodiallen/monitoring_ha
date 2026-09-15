@@ -289,12 +289,31 @@ services:
     networks:
       - monitoring
 
+  pushgateway:
+    image: prom/pushgateway:v1.11.3
+    restart: unless-stopped
+
+    command:
+      - --web.listen-address=:9091
+      - --persistence.file=/data/pushgateway.data
+
+    volumes:
+      - pushgateway_data:/data
+
+    ports:
+      - "127.0.0.1:9091:9091"
+
+    networks:
+      - monitoring
+
+
 networks:
   monitoring:
     driver: bridge
 
 volumes:
   alertmanager_data:
+  pushgateway_data:
 
 secrets:
   prometheus_basic_auth_password:

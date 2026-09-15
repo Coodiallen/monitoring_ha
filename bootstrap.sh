@@ -864,6 +864,7 @@ REQUIRED_SERVICES=(
     node-exporter
     cadvisor
     influxdb
+    pushgateway
 )
 
 BOOTSTRAP_FAILED=0

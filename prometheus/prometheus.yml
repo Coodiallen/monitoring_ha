@@ -59,3 +59,17 @@ scrape_configs:
       # service is only an intermediate discovery label.
       - action: labeldrop
         regex: service
+
+  # ==========================================================
+  # Pushgateway
+  # ==========================================================
+
+  - job_name: pushgateway
+
+    honor_labels: true
+
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/pushgateway/*.json
+
+        refresh_interval: 30s

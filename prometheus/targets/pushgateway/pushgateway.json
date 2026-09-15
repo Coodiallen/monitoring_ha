@@ -1,0 +1,11 @@
+[
+  {
+    "targets": [
+      "pushgateway:9091"
+    ],
+    "labels": {
+      "env": "dev",
+      "role": "batch-metrics"
+    }
+  }
+]
