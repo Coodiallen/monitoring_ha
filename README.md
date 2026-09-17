@@ -5,10 +5,10 @@ Docker-based monitoring and observability pet project with Grafana HA, Prometheu
 ## Architecture
 
 ```text
-PostgreSQL
-    │
-┌───┴────┐
-│        │
+    PostgreSQL
+        │
+    ┌───┴────┐
+    │        │
 Grafana-1 Grafana-2
     │        │
     └───┬────┘
